@@ -56,7 +56,9 @@ function handleSubChunks( fd, songData, callback ){
     }
 
     if( songData['fmt '] !== undefined ){
-        populateFMT(fd, songData['fmt '], function(err, data){
+        songData.fmt = songData['fmt '];
+        songData['fmt '] = undefined;
+        populateFMT(fd, songData.fmt, function(err, data){
             if(err){
                 console.error(err.message);
             }
@@ -135,6 +137,9 @@ module.exports = function decodeWAVFile( file, callback ){
         }
     });
 
+    songData.fd = fd;
+
     callback( null, songData );
     return songData;
 }
+
