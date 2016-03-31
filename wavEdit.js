@@ -1,8 +1,14 @@
 var wav = require('./nodeIO.js');
 var fs = require('fs');
 
-var songData = wav('./wavefiles/splicetest.wav', function(err, data){
+var songData = wav('./wavefiles/combine.wav', function(err, data){
     if( err ){
+        console.error(err.message);
+    }
+});
+
+var testsong = wav('./wavefiles/writing_to_file.wav', function(err, data) {
+    if (err) {
         console.error(err.message);
     }
 });
@@ -16,48 +22,77 @@ function getBuffer(hexCode) {
     return buffer;
 }
 
-function splice(outName, songData, start, end, callback) {
-    if (end < start || start < 0 || end < 0 || start > songData.filesize || end > songData.filesize) {
-        return callback({message: 'Invalid start time or end time.'});
-    }
-
-    if (typeof(outName) !== typeof('')) {
-        return callback({message: 'Output filename must be a string.'});
-    }
-
-    if (!songData) {
-        return callback({message: 'Song data is not found.'});
-    }
-
+function writeHeader(oldFile, newFile, newDataSize, newFileSize) {
     var buffer = new Buffer(4);
-    var newFile = fs.openSync(outName, 'w');
 
-    var newDataSize = songData.fmt.byteRate*(end-start);
-    var newFileSize = newDataSize + 44;
-
-    // copy the starter and fmti from original
-    for (var i = 0; i < songData.filesize; i+=4) {
-        if (i === 4) {
-            // Write new file size
+    for (var i=0; i<40; i+=4) {
+        if (i===4) {
             fs.writeSync(newFile, getBuffer(newFileSize), 0, 4);
-        } else if (i === 40) {
+        } else if (i===40) {
             // Write new data size
             fs.writeSync(newFile, getBuffer(newDataSize), 0, 4);
-        } else if (i < 40 || (i > songData.fmt.byteRate*start && i <= songData.fmt.byteRate*end)) {
+        } else {
             // Else if we're reading in the header region or the correct data region, write same data over
             fs.readSync(songData.fd, buffer, 0, 4, i);
             fs.writeSync(newFile, buffer, 0, 4);
         }
-        
+    }
+}
+
+function splice(outName, songData, start, end, callback) {
+    if (end < start || start < 0 || end < 0 || start > songData.filesize || end > songData.filesize)
+        return callback({message: 'Invalid start time or end time.'});
+
+    if (typeof(outName) !== typeof(''))
+        return callback({message: 'Output filename must be a string.'});
+
+    if (!songData)
+        return callback({message: 'Song data is not found.'});
+
+    var buffer = new Buffer(4);
+    var newFile = fs.openSync(outName, 'w');
+    var newDataSize = songData.fmt.byteRate*(end-start);
+    var newFileSize = newDataSize + 44;
+
+    writeHeader(songData.fd, newFile, newDataSize, newFileSize);
+
+    var begin = songData.fmt.byteRate*start + 40,
+        end = songData.fmt.byteRate*end + 40;
+
+    for (var i=begin; i<=end; i+=4) {
+        fs.readSync(songData.fd, buffer, 0, 4, i);
+        fs.writeSync(newFile, buffer, 0, 4);
     }
 
     fs.closeSync(newFile);
 }
 
-splice('./wavefiles/writing_to_file.wav', songData, 2, 4, function(err) {
-    if (err) {
-        console.log(err.message);
+function combine(outName, trackA, trackB, callback) {
+    if (typeof(outName) !== typeof('')) {
+        return callback({message: 'Output filename must be a string.'});
     }
-});
 
-// console.log(songData);
+    if (!trackA) {
+        return callback({message: 'Track A is not found.'});
+    } else if (!trackB) {
+        return callback({message: 'Track B is not found.'});
+    }
+
+    var newFileSize = trackA.filesize + trackB.filesize - 44;
+    var buffer = new Buffer(4);
+    var newFile = fs.openSync(outName, 'w');
+
+    writeHeader(trackA.fd, newFile, newFileSize-44, newFileSize);
+
+    for (var i=40; i<=trackA.filesize; i+=4) {
+        fs.readSync(trackA.fd, buffer, 0, 4, i);
+        fs.writeSync(newFile, buffer, 0, 4);
+    }
+
+    for (var i=40; i<=trackB.filesize; i+=4) {
+        fs.readSync(trackB.fd, buffer, 0, 4, i);
+        fs.writeSync(newFile, buffer, 0, 4);
+    }
+
+    fs.closeSync(newFile);
+}
