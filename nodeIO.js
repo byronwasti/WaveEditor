@@ -105,7 +105,7 @@ function populateFMT( fd, fmt, callback ){
     return callback(null, fmt);
 }
 
-function decodeWAVFile( file, callback ){
+module.exports = function decodeWAVFile( file, callback ){
     // Set up a 32 bit buffer object
     var songData = {};
 
